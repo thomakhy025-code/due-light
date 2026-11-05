@@ -41,6 +41,7 @@ try {
   if (!(await exists(path.join(outDir, "index.html")))) {
     throw new Error("Static export did not write out/index.html");
   }
+  await writeFile(path.join(outDir, ".nojekyll"), "");
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
   await cp(outDir, staging, { recursive: true });
