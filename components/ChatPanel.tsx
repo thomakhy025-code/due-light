@@ -12,6 +12,7 @@ export default function ChatPanel({
   onAdd,
   onDiscard,
   onAddAll,
+  onOpenStudy,
 }: {
   messages: ChatMessage[];
   onSend: (text: string, file: File | null) => Promise<void>;
@@ -19,6 +20,7 @@ export default function ChatPanel({
   onAdd: (messageId: string, proposalId: string) => void;
   onDiscard: (messageId: string, proposalId: string) => void;
   onAddAll: (messageId: string) => void;
+  onOpenStudy: (studySetId: string) => void;
 }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -64,7 +66,7 @@ export default function ChatPanel({
       <div className="messages" ref={logRef}>
         {messages.length === 0 ? (
           <div className="empty-chat">
-            <p>Tell me a due date, or attach a photo of the sheet. Nothing is saved until you confirm it.</p>
+            <p>Tell me a due date, or attach a photo of the sheet. Nothing is saved until you confirm it. To revise notes, open Study, or ask me to summarise them.</p>
             <div className="examples">
               {EXAMPLES.map((example) => (
                 <button key={example} type="button" className="example" onClick={() => void submit(example, null)}>
@@ -96,6 +98,13 @@ export default function ChatPanel({
                 <div className="row-actions">
                   <button type="button" className="primary" onClick={() => onAddAll(message.id)}>
                     Add all
+                  </button>
+                </div>
+              ) : null}
+              {message.studySetId ? (
+                <div className="row-actions">
+                  <button type="button" className="primary" onClick={() => onOpenStudy(message.studySetId!)}>
+                    Open study set
                   </button>
                 </div>
               ) : null}

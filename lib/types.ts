@@ -29,6 +29,7 @@ export type ChatMessage = {
   text: string;
   imageName?: string;
   proposals?: Proposal[];
+  studySetId?: string;
   createdAt: string;
 };
 
@@ -43,15 +44,49 @@ export type CalEvent = {
   createdAt: string;
 };
 
+export type Flashcard = {
+  id: string;
+  front: string;
+  back: string;
+  known: boolean;
+};
+
+export type PracticeQuestion = {
+  id: string;
+  prompt: string;
+  approach: string;
+};
+
+export type StudySet = {
+  id: string;
+  title: string;
+  points: string[];
+  flashcards: Flashcard[];
+  questions: PracticeQuestion[];
+  source: "notes" | "photo" | "model";
+  createdAt: string;
+};
+
+export type StudyDraft = {
+  title: string;
+  points: string[];
+  flashcards: Array<{ front: string; back: string }>;
+  questions: Array<{ prompt: string; approach: string }>;
+};
+
 export type Store = {
   userId: string;
   events: CalEvent[];
   messages: ChatMessage[];
+  studies: StudySet[];
 };
 
 export type ExtractSuccess = { ok: true; events: DraftEvent[] };
 export type ExtractFailure = { ok: false; reason: string; message: string };
 export type ExtractResult = ExtractSuccess | ExtractFailure;
+
+export type StudySuccess = { ok: true; study: StudyDraft };
+export type StudyResult = StudySuccess | ExtractFailure;
 
 export type ImagePayload = {
   name: string;

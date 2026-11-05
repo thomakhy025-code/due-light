@@ -22,6 +22,9 @@ export function createRateState(): RateState {
   return { byKey: new Map(), global: [] };
 }
 
+/** One budget for deadline reads and study reads on this server process. */
+export const appRateState = createRateState();
+
 export function allowRequest(state: RateState, key: string, now: number, limits: RateLimits = DEFAULT_LIMITS): boolean {
   state.global = state.global.filter((stamp) => now - stamp < HOUR);
   if (state.global.length >= limits.globalPerHour) return false;

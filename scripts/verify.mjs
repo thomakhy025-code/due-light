@@ -20,6 +20,14 @@ function shanghaiIso(offsetDays = 0) {
 
 const today = shanghaiIso(0);
 const tomorrow = shanghaiIso(1);
+function shanghaiHour() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  return Number(parts.find((part) => part.type === "hour")?.value);
+}
 const failures = [];
 function check(name, ok, detail = "") {
   if (!ok) failures.push(`${name}${detail ? `: ${detail}` : ""}`);
@@ -62,9 +70,17 @@ await page.waitForFunction(
 );
 const coming = await page.locator("#coming-up").innerText();
 check("coming up lists tomorrow", /essay/i.test(coming) && /tomorrow/i.test(coming), coming);
-check("reminder due badge", coming.includes("Reminder due"));
+// A tomorrow event reminds at 08:00 Shanghai the day before. Before that hour, use a today event: its day-before reminder is already past.
+if (shanghaiHour() < 8) {
+  await page.getByLabel("Deadline note").fill("Lab due today");
+  await page.getByRole("button", { name: "Mark dates" }).click();
+  await page.getByRole("button", { name: "Add to calendar" }).last().waitFor();
+  await page.getByRole("button", { name: "Add to calendar" }).last().click();
+}
+await page.waitForFunction(() => document.querySelector("#coming-up")?.innerText.includes("Reminder due"));
+check("reminder due badge", (await page.locator("#coming-up").innerText()).includes("Reminder due"));
 
-await page.locator("#coming-up select").selectOption("none");
+await page.locator("#coming-up select").first().selectOption("none");
 await page.waitForFunction(() => !document.querySelector("#coming-up")?.innerText.includes("Reminder due"));
 check("reminder can be turned off", true);
 
@@ -75,7 +91,7 @@ check(
   (await page.locator('[data-date="2026-11-14"]').getAttribute("data-count")) === "1",
 );
 check("refresh keeps tomorrow", (await page.locator("#coming-up").innerText()).includes("Essay"));
-check("refresh keeps the edited reminder", (await page.locator("#coming-up select").inputValue()) === "none");
+check("refresh keeps the edited reminder", (await page.locator("#coming-up select").first().inputValue()) === "none");
 
 await page.getByLabel("Deadline note").fill("Homework 1 due Nov 21. Quiz Nov 18 10am");
 await page.getByRole("button", { name: "Mark dates" }).click();

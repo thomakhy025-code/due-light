@@ -5,12 +5,14 @@ import ChatPanel from "@/components/ChatPanel";
 import ComingUp from "@/components/ComingUp";
 import DayDetail from "@/components/DayDetail";
 import MonthCalendar from "@/components/MonthCalendar";
-import { extractDeadlines, readImageFile, visionEnabled } from "@/lib/client-api";
+import StudyPanel from "@/components/StudyPanel";
+import { extractDeadlines, readImageFile, summariseMaterial, visionEnabled } from "@/lib/client-api";
 import { planReply } from "@/lib/reply";
 import { notificationBody, shouldNotify } from "@/lib/reminders";
 import { formatClock, isIsoDate, shanghaiNow, type WallClock } from "@/lib/shanghai";
+import { asksToStudy, materialiseStudy, studyFromNotes } from "@/lib/study-notes";
 import { loadStore, saveStore } from "@/lib/storage";
-import type { CalEvent, ChatMessage, Proposal, ReminderChoice, Store } from "@/lib/types";
+import type { CalEvent, ChatMessage, ImagePayload, Proposal, ReminderChoice, Store, StudyDraft, StudyResult, StudySet } from "@/lib/types";
 
 type View = { year: number; month: number; selected: string };
 
@@ -20,6 +22,10 @@ export default function DueLight() {
   const [view, setView] = useState<View | null>(null);
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">("default");
   const [saveWarning, setSaveWarning] = useState(false);
+  const [desk, setDesk] = useState<"calendar" | "study">("calendar");
+  const [activeStudy, setActiveStudy] = useState<string | null>(null);
+  const [studyBusy, setStudyBusy] = useState(false);
+  const [studyNote, setStudyNote] = useState<string | null>(null);
   const notifiedIds = useRef(new Set<string>());
 
   useEffect(() => {
@@ -218,14 +224,19 @@ export default function DueLight() {
       return;
     }
     pushMessages(userMessage);
-    let image = null;
+    let image: ImagePayload | null = null;
     if (file) {
       try {
-        image = await readImageFile(file);
+        const read = await readImageFile(file);
+        image = { name: read.name, mime: read.mime, base64: read.base64 };
       } catch {
         pushMessages(assistantMessage("I couldn't open that photo. Type the date instead."));
         return;
       }
+    }
+    if (asksToStudy(trimmed)) {
+      await finishStudy(trimmed, image, true);
+      return;
     }
     const plan = await planReply({
       text: trimmed,
@@ -235,6 +246,113 @@ export default function DueLight() {
       extract: extractDeadlines,
     });
     pushMessages(assistantMessage(plan.text, plan.proposals));
+  }
+
+  function openStudy(id?: string) {
+    setDesk("study");
+    if (id) {
+      setActiveStudy(id);
+      return;
+    }
+    setActiveStudy((current) => current ?? store?.studies[0]?.id ?? null);
+  }
+
+  async function onStudy(text: string, file: File | null): Promise<boolean> {
+    const trimmed = text.trim();
+    if (!store || (!trimmed && !file)) return false;
+    if (file && file.size > 3_200_000) {
+      setStudyNote("That photo is over 3 MB. Try a smaller one, or paste the notes.");
+      return false;
+    }
+    setStudyBusy(true);
+    setStudyNote(null);
+    try {
+      let image: ImagePayload | null = null;
+      if (file) {
+        try {
+          const read = await readImageFile(file);
+          image = { name: read.name, mime: read.mime, base64: read.base64 };
+        } catch {
+          setStudyNote("I couldn't open that photo. Paste the notes instead.");
+          return false;
+        }
+      }
+      return await finishStudy(trimmed, image, false);
+    } finally {
+      setStudyBusy(false);
+    }
+  }
+
+  async function finishStudy(text: string, image: ImagePayload | null, announce: boolean): Promise<boolean> {
+    const local = text ? studyFromNotes(text) : null;
+    const line = (draft: StudyDraft) =>
+      `I pulled out ${draft.points.length} important points, made ${draft.flashcards.length} flashcards, and wrote ${draft.questions.length} exam-style questions that ask you to apply the ideas.`;
+    const save = (draft: StudyDraft, source: StudySet["source"], message: string) => {
+      const set = materialiseStudy(draft, source);
+      const assistant = announce ? { ...assistantMessage(message), studySetId: set.id } : null;
+      setStore((current) =>
+        current
+          ? {
+              ...current,
+              studies: [set, ...(current.studies ?? [])].slice(0, 30),
+              messages: assistant ? [...current.messages, assistant].slice(-40) : current.messages,
+            }
+          : current,
+      );
+      setActiveStudy(set.id);
+      setDesk("study");
+      setStudyNote(null);
+      return true;
+    };
+    const fail = (message: string) => {
+      if (announce) pushMessages(assistantMessage(message));
+      else setStudyNote(message);
+      return false;
+    };
+
+    if (image) {
+      let vision = false;
+      try {
+        vision = await visionEnabled();
+      } catch {
+        vision = false;
+      }
+      if (!vision) {
+        if (local) {
+          return save(
+            local,
+            "notes",
+            `${line(local)} The photo was not read. Add an OpenAI key named OPENAI_API_KEY to read pictures. Nothing from the photo was saved.`,
+          );
+        }
+        return fail(
+          "I can't read that photo yet. Add an OpenAI key named OPENAI_API_KEY for this app. Nothing from the picture was saved. Clear notes with headings or bullets still summarise.",
+        );
+      }
+      let result: StudyResult;
+      try {
+        result = await summariseMaterial({ text, image: { mime: image.mime, data: image.base64 } });
+      } catch {
+        result = { ok: false, reason: "upstream", message: "The reader didn't answer." };
+      }
+      if (result.ok) return save(result.study, "photo", line(result.study));
+      if (local) return save(local, "notes", `${result.message} I used the typed notes instead. ${line(local)}`);
+      return fail(result.message);
+    }
+
+    if (local) return save(local, "notes", line(local));
+    let result: StudyResult;
+    try {
+      result = await summariseMaterial({ text });
+    } catch {
+      result = {
+        ok: false,
+        reason: "upstream",
+        message: "I couldn't summarise that, and the reader didn't answer. Try headings and bullet points.",
+      };
+    }
+    if (result.ok) return save(result.study, "model", line(result.study));
+    return fail(result.message);
   }
 
   function pushMessages(...items: ChatMessage[]) {
@@ -264,7 +382,7 @@ export default function DueLight() {
       <header className="top">
         <div>
           <h1 className="wordmark">Due Light</h1>
-          <p className="lede">Homework and tests for this browser. A refresh will not clear them.</p>
+          <p className="lede">Deadlines and revision for this browser. A refresh will not clear them.</p>
         </div>
         <div className="top-side">
           <p className="clock">{formatClock(clock)}</p>
@@ -281,6 +399,14 @@ export default function DueLight() {
           )}
         </div>
       </header>
+      <div className="tabs" role="tablist" aria-label="Due Light">
+        <button id="tab-calendar" type="button" role="tab" aria-selected={desk === "calendar"} onClick={() => setDesk("calendar")}>
+          Calendar
+        </button>
+        <button id="tab-study" type="button" role="tab" aria-selected={desk === "study"} onClick={() => openStudy()}>
+          Study
+        </button>
+      </div>
       {saveWarning ? (
         <p className="save-warning" role="status">
           This browser blocked saving. A refresh may clear the calendar.
@@ -291,6 +417,37 @@ export default function DueLight() {
         today={clock.iso}
         onReminder={(id, reminder: ReminderChoice) => patchEvent(id, { reminder })}
       />
+      {desk === "study" ? (
+        <StudyPanel
+          studies={store.studies}
+          activeId={activeStudy}
+          note={studyNote}
+          busy={studyBusy}
+          onSummarise={onStudy}
+          onSelect={setActiveStudy}
+          onRemove={(id) => {
+            setStore((current) => (current ? { ...current, studies: current.studies.filter((set) => set.id !== id) } : current));
+            setActiveStudy((current) => (current === id ? null : current));
+          }}
+          onKnown={(setId, cardId) =>
+            setStore((current) =>
+              current
+                ? {
+                    ...current,
+                    studies: current.studies.map((set) =>
+                      set.id !== setId
+                        ? set
+                        : {
+                            ...set,
+                            flashcards: set.flashcards.map((card) => (card.id === cardId ? { ...card, known: !card.known } : card)),
+                          },
+                    ),
+                  }
+                : current,
+            )
+          }
+        />
+      ) : (
       <div className="board">
         <div>
           <MonthCalendar
@@ -320,8 +477,10 @@ export default function DueLight() {
           onAdd={addProposal}
           onDiscard={discardProposal}
           onAddAll={addAll}
+          onOpenStudy={openStudy}
         />
       </div>
+      )}
     </main>
   );
 }
