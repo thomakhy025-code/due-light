@@ -413,6 +413,8 @@ textarea { resize: vertical; min-height: 64px; }
 .msg-user p, .msg-assistant > p { margin: 0; white-space: pre-wrap; }
 
 .msg-assistant { align-self: stretch; }
+.desk-kind { margin: 0 0 4px; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--green); }
+.model-status { margin: 0 0 8px; color: var(--ink-soft); font-size: 0.9rem; }
 
 .photo-name { display: block; margin-top: 4px; opacity: 0.8; font-size: 0.85rem; }
 

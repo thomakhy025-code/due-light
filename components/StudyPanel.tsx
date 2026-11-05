@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FILE_ACCEPT } from "@/lib/document-files";
 import { SAMPLE_NOTES } from "@/lib/study-notes";
 import type { StudySet } from "@/lib/types";
 
@@ -9,6 +10,7 @@ export default function StudyPanel({
   activeId,
   note,
   busy,
+  modelLine,
   onSummarise,
   onSelect,
   onRemove,
@@ -18,6 +20,7 @@ export default function StudyPanel({
   activeId: string | null;
   note: string | null;
   busy: boolean;
+  modelLine: string;
   onSummarise: (text: string, file: File | null) => Promise<boolean>;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
@@ -63,7 +66,8 @@ export default function StudyPanel({
     <div className="study-layout" id="study">
       <section className="card study-compose" aria-label="Summarise course material">
         <h2 className="section-label">Course material</h2>
-        <p className="quiet">Paste notes with headings or bullets, or attach a photo, then summarise. Clear notes stay on this device.</p>
+        <p className="model-status" role="status">{modelLine}</p>
+        <p className="quiet">Paste notes with headings or bullets, or attach a photo or PDF. The file is read in this browser and is not uploaded.</p>
         <label className="field">
           Course notes
           <textarea
@@ -74,12 +78,12 @@ export default function StudyPanel({
             onChange={(change) => setText(change.target.value)}
           />
         </label>
-        {file && preview ? (
+        {file ? (
           <div className="preview">
-            <img src={preview} alt="" />
+            {preview && file.type.startsWith("image/") ? <img src={preview} alt="" /> : null}
             <span>{file.name}</span>
             <button type="button" className="ghost" onClick={() => setFile(null)}>
-              Remove photo
+              Remove file
             </button>
           </div>
         ) : null}
@@ -88,21 +92,21 @@ export default function StudyPanel({
             Use a sample
           </button>
           <label className="icon-btn file-label">
-            Add photo
+            Add photo or PDF
             <input
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept={FILE_ACCEPT}
               hidden
               onChange={(change) => setFile(change.target.files?.[0] ?? null)}
             />
           </label>
           <button id="summarise" type="button" className="primary" disabled={busy || (!text.trim() && !file)} onClick={() => void submit()}>
-            {busy ? "Summarising…" : "Summarise"}
+            {busy ? (file ? "Reading…" : "Summarising…") : "Summarise"}
           </button>
         </div>
         {note ? <p className="save-warning" role="status">{note}</p> : null}
         <p className="fine-print">
-          Headings and bullet points are summarised in this browser. Photos, and notes without that shape, are sent to OpenAI only when a key is set, and are not stored.
+          Photos, PDFs, and notes stay in this browser. They are not uploaded.
         </p>
         {studies.length > 0 ? (
           <div className="set-list">
@@ -191,7 +195,7 @@ export default function StudyPanel({
               </div>
             ) : null}
             <h3 className="section-label">Practice questions</h3>
-            <p className="quiet">These ask you to use the idea in a new situation, not only to repeat it.</p>
+            <p className="quiet">Each question uses the terms from these notes.</p>
             {active.questions.map((question) => (
               <article key={question.id} className="question" data-question="true">
                 <p className="kind kind-test">Apply</p>

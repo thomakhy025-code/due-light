@@ -2,6 +2,11 @@ node_modules
 .next
 out
 .pages-api-stash
+public/pdf.worker.min.mjs
+public/tesseract/
+public/tessdata/
+public/study-runtime/
+public/study-model/
 .DS_Store
 *.log
 .env

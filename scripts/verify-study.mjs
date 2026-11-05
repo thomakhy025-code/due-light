@@ -47,7 +47,8 @@ check("flashcard answer is the point", back.length > 20, back);
 
 await page.getByRole("button", { name: "Show how to answer" }).first().click();
 const question = await page.locator("[data-question]").first().innerText();
-check("practice question asks to apply", /choose|apply|situation|fresh|new exam|use this/i.test(question), question.slice(0, 180));
+check("practice question uses the notes", /glycolysis|oxygen|krebs|osmosis|electron|pyruvate|mitochondria/i.test(question), question.slice(0, 220));
+check("practice question is not a fixed template", !/an exam describes a new situation|fresh example|you have not revised/i.test(question));
 check("practice question is not bare recall", !/^\s*\d+\.\s*(what is|define)\b/i.test(question));
 check("approach is visible", /how to answer/i.test(question) && question.length > 180);
 
@@ -61,9 +62,8 @@ check("refresh keeps the study set", (await page.locator("[data-study-title]").i
 const beforeMessy = studyPosts;
 await page.locator("#course-notes").fill("so like cells do this energy thing and water moves around idk it's kinda important");
 await page.locator("#summarise").click();
-await page.getByText("OPENAI_API_KEY").last().waitFor();
-check("messy notes name the missing key", (await page.locator("#study").innerText()).includes("OPENAI_API_KEY"));
-check("messy notes ask the model", studyPosts === beforeMessy + 1, `posts=${studyPosts}`);
+await page.getByText(/clear date|bullet notes|study model/i).waitFor();
+check("messy notes stay in the browser", studyPosts === beforeMessy, `posts=${studyPosts}`);
 
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -74,14 +74,15 @@ const beforePhoto = studyPosts;
 await page.locator("#course-notes").fill("");
 await page.locator("#study input[type='file']").setInputFiles(`${outDir}/notes.png`);
 await page.locator("#summarise").click();
-await page.getByText("Nothing from the picture was saved").waitFor();
-check("photo without a key is not uploaded", studyPosts === beforePhoto, `posts=${studyPosts}`);
-check("photo without a key names OPENAI_API_KEY", (await page.locator("#study").innerText()).includes("OPENAI_API_KEY"));
+await page.getByText(/readable text/i).waitFor({ timeout: 60000 });
+check("blank photo is not uploaded", studyPosts === beforePhoto, `posts=${studyPosts}`);
+check("blank photo says no readable text", (await page.locator("#study").innerText()).includes("readable text"));
 
 await page.locator("#tab-calendar").click();
 await page.waitForSelector("#chat");
 await page.getByLabel("Deadline note").fill("Please summarise these notes:\n- Mitosis makes two identical nuclei.\n- Meiosis makes four nuclei with half the chromosomes.");
-await page.getByRole("button", { name: "Mark dates" }).click();
+await page.getByRole("button", { name: "Send" }).click();
+await page.getByRole("button", { name: "Open study set" }).click();
 await page.waitForSelector("[data-study-title]");
 check("chat summarise opens a study set", /mitosis|meiosis|identical/i.test(await page.locator("#study").innerText()));
 await page.locator("#tab-calendar").click();

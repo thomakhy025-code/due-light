@@ -2,4 +2,4 @@
 export const pagesHost = process.env.NEXT_PUBLIC_DUE_LIGHT_HOST === "pages";
 
 export const pagesReaderMessage =
-  "This public page cannot read photos or messy notes. Clear dates and bullet notes still work on this device.";
+  "The study model could not load in this browser. Clear dates and bullet notes still work on this device.";

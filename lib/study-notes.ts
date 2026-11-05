@@ -1,3 +1,4 @@
+import { materialQuestions } from "./material-questions";
 import type { StudyDraft, StudySet } from "./types";
 
 export const SAMPLE_NOTES = `Cell respiration
@@ -86,7 +87,6 @@ function parseStructured(text: string): { title: string; items: ParsedItem[] } {
     }
     if (heading && source.length >= 40) {
       items.push({ kind: "point", text: heading === title ? source : `${heading}: ${source}` });
-      heading = "";
     }
   }
   return { title, items };
@@ -111,41 +111,14 @@ function cueFromPoint(text: string): string {
   return words.length < text.length ? `${words}…` : words;
 }
 
-function applicationQuestions(points: string[]): Array<{ prompt: string; approach: string }> {
-  const templates = [
-    (point: string) => ({
-      prompt: `An exam describes a new situation you have not revised. How would you apply this idea, and what result would you expect?\n\nIdea: ${point}`,
-      approach: `Name the clue in the new situation that matches the idea. Say what you would predict or do because of that clue, and what would change if the clue were missing. Do not stop at restating the idea.`,
-    }),
-    (point: string) => ({
-      prompt: `You have to choose what to do in a fresh example. Which part of this idea decides your choice, and what would you do next?\n\nIdea: ${point}`,
-      approach: `Turn the idea into a rule you can test. Match one detail of the example to that rule, state the choice, and name the mistake you would make if you ignored that detail.`,
-    }),
-    (point: string) => ({
-      prompt: `A marker asks you to use this knowledge, not only recall it. Sketch a short case and show the step where the idea changes the answer.\n\nIdea: ${point}`,
-      approach: `Write one sentence of situation and two of application. The answer should end with an outcome: what happens, or what you would decide, because of the idea.`,
-    }),
-  ];
-  const questions = points.slice(0, 3).map((point, index) => templates[index % templates.length](point));
-  if (points.length >= 2) {
-    questions.unshift({
-      prompt: `A question asks you to choose between two ideas for a new situation. How do you decide which one applies, and what is the first step after you choose?\n\nFirst idea: ${points[0]}\nSecond idea: ${points[1]}`,
-      approach: `State the job of each idea in a few words. Match one detail in the situation to one job. Write the choice, the reason, and the next step. Then say what would go wrong if you picked the other idea.`,
-    });
-  }
-  return questions.slice(0, 4);
-}
+const GENERIC_QUESTION =
+  /an exam describes a new situation|fresh example|a marker asks you to use this knowledge|choose between two ideas for a new situation|you have not revised/i;
 
-function isRecallOnly(prompt: string): boolean {
-  return RECALL_ONLY.test(prompt.replace(/\s+/g, " ").trim());
-}
-
-export function withApplicationQuestions(draft: StudyDraft): StudyDraft {
-  const kept = draft.questions.filter((question) => question.prompt && question.approach && !isRecallOnly(question.prompt));
-  if (kept.length >= 2) return { ...draft, questions: kept.slice(0, 4) };
-  const extra = applicationQuestions(draft.points);
-  const questions = [...kept, ...extra].slice(0, 4);
-  return { ...draft, questions };
+export function withMaterialQuestions(draft: StudyDraft): StudyDraft {
+  const fromNotes = materialQuestions(draft.points).filter(
+    (question) => question.prompt && question.approach && !GENERIC_QUESTION.test(question.prompt) && !RECALL_ONLY.test(question.prompt),
+  );
+  return { ...draft, questions: fromNotes.slice(0, 3) };
 }
 
 function draftFromItems(title: string, items: ParsedItem[]): StudyDraft | null {
@@ -176,7 +149,7 @@ function draftFromItems(title: string, items: ParsedItem[]): StudyDraft | null {
     flashcards: flashcards.slice(0, 8),
     questions: [],
   };
-  return withApplicationQuestions(draft);
+  return withMaterialQuestions(draft);
 }
 
 export function studyFromNotes(text: string): StudyDraft | null {
@@ -225,7 +198,7 @@ export function studyFromModelPayload(payload: unknown): StudyDraft | null {
   const title = typeof record.title === "string" ? clean(record.title, 80) : "";
   if (points.length < 2 && flashcards.length < 2) return null;
   const pointList = points.length >= 2 ? points : flashcards.map((card) => `${card.front}: ${card.back}`);
-  return withApplicationQuestions({
+  return withMaterialQuestions({
     title: title || cueFromPoint(pointList[0]) || "Course notes",
     points: pointList.slice(0, 8),
     flashcards: (flashcards.length > 0 ? flashcards : pointList.map((point) => ({ front: cueFromPoint(point), back: point }))).slice(0, 8),

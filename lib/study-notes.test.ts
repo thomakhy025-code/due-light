@@ -11,7 +11,8 @@ test("clear bullet notes become points, cards, and application questions", () =>
   assert.ok(study?.flashcards.some((card) => card.front === "Osmosis"));
   assert.ok(study && study.questions.length >= 2);
   for (const question of study?.questions ?? []) {
-    assert.match(question.prompt, /situation|choose|apply|fresh|new exam|use this/i);
+    assert.match(question.prompt, /glycolysis|krebs|electron|osmosis|oxygen|pyruvate|mitochondria/i);
+    assert.doesNotMatch(question.prompt, /an exam describes a new situation|fresh example|you have not revised/i);
     assert.doesNotMatch(question.prompt, /^\s*(what is|define)\b/i);
     assert.ok(question.approach.length > 40);
   }
@@ -31,6 +32,7 @@ test("two clear sentences work without a model", () => {
   assert.ok(study);
   assert.equal(study?.points.length, 2);
   assert.ok(study && study.questions.length >= 2);
+  assert.match(study?.questions.map((question) => question.prompt).join(" ") ?? "", /photosynthesis|chloroplast|respiration|mitochondria|sugar/i);
 });
 
 test("messy notes are left for the model", () => {

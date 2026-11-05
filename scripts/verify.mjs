@@ -49,7 +49,7 @@ await page.waitForSelector("#calendar");
 await page.screenshot({ path: `${outDir}/desktop-empty.png`, fullPage: true });
 
 await page.getByLabel("Deadline note").fill("Math homework due 2026-11-14");
-await page.getByRole("button", { name: "Mark dates" }).click();
+await page.getByRole("button", { name: "Send" }).click();
 await page.getByRole("button", { name: "Add to calendar" }).waitFor();
 await page.screenshot({ path: `${outDir}/desktop-confirm.png`, fullPage: true });
 check("confirm before save", await page.getByText("Check it, then add it.").count() > 0);
@@ -62,7 +62,7 @@ const homeworkTitle = await page.locator(".day-card input").first().inputValue()
 check("day detail lists the homework", homeworkTitle === "Math homework", homeworkTitle);
 
 await page.getByLabel("Deadline note").fill("Essay due tomorrow");
-await page.getByRole("button", { name: "Mark dates" }).click();
+await page.getByRole("button", { name: "Send" }).click();
 await page.getByRole("button", { name: "Add to calendar" }).last().click();
 await page.waitForFunction(
   (iso) => document.querySelector(`[data-date="${iso}"]`)?.getAttribute("data-count") === "1",
@@ -73,7 +73,7 @@ check("coming up lists tomorrow", /essay/i.test(coming) && /tomorrow/i.test(comi
 // A tomorrow event reminds at 08:00 Shanghai the day before. Before that hour, use a today event: its day-before reminder is already past.
 if (shanghaiHour() < 8) {
   await page.getByLabel("Deadline note").fill("Lab due today");
-  await page.getByRole("button", { name: "Mark dates" }).click();
+  await page.getByRole("button", { name: "Send" }).click();
   await page.getByRole("button", { name: "Add to calendar" }).last().waitFor();
   await page.getByRole("button", { name: "Add to calendar" }).last().click();
 }
@@ -94,7 +94,7 @@ check("refresh keeps tomorrow", (await page.locator("#coming-up").innerText()).i
 check("refresh keeps the edited reminder", (await page.locator("#coming-up select").first().inputValue()) === "none");
 
 await page.getByLabel("Deadline note").fill("Homework 1 due Nov 21. Quiz Nov 18 10am");
-await page.getByRole("button", { name: "Mark dates" }).click();
+await page.getByRole("button", { name: "Send" }).click();
 await page.getByRole("button", { name: "Add all" }).click();
 await page.waitForFunction(() => document.querySelector('[data-date="2026-11-21"]')?.getAttribute("data-count") === "1");
 check("second date from one note", (await page.locator('[data-date="2026-11-18"]').getAttribute("data-count")) === "1");
@@ -107,21 +107,21 @@ const png = Buffer.from(
 );
 await writeFile(`${outDir}/sheet.png`, png);
 await page.locator('input[type="file"]').setInputFiles(`${outDir}/sheet.png`);
-await page.getByRole("button", { name: "Mark dates" }).click();
-await page.getByText("OPENAI_API_KEY").last().waitFor();
-check("photo without a key explains the secret", (await page.locator("#chat").innerText()).includes("Nothing from the picture was saved"));
+await page.getByRole("button", { name: "Send" }).click();
+await page.getByText(/readable text/i).last().waitFor({ timeout: 60000 });
+check("blank photo explains that no text was found", (await page.locator("#chat").innerText()).includes("readable text"));
 
 await page.getByLabel("Deadline note").fill("Reading due 2026-11-19");
 await page.locator('input[type="file"]').setInputFiles(`${outDir}/sheet.png`);
-await page.getByRole("button", { name: "Mark dates" }).click();
+await page.getByRole("button", { name: "Send" }).click();
 await page.getByRole("button", { name: "Add to calendar" }).last().waitFor();
-check("typed date still offered when the photo cannot be read", (await page.locator("#chat").innerText()).includes("photo was not read"));
+check("typed date still offered when the photo has no text", (await page.locator("#chat").innerText()).includes("readable text"));
 await page.getByRole("button", { name: "Add to calendar" }).last().click();
 await page.waitForFunction(() => document.querySelector('[data-date="2026-11-19"]')?.getAttribute("data-count") === "1");
 
 await page.getByLabel("Deadline note").fill("the thing for chem is kinda soon I think");
-await page.getByRole("button", { name: "Mark dates" }).click();
-await page.getByText(/OPENAI_API_KEY/).last().waitFor();
+await page.getByRole("button", { name: "Send" }).click();
+await page.getByText(/clear date|study model/i).last().waitFor();
 
 await context.grantPermissions(["notifications"]);
 await page.getByRole("button", { name: "Turn on reminders" }).click();

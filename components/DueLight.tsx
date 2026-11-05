@@ -6,14 +6,15 @@ import ComingUp from "@/components/ComingUp";
 import DayDetail from "@/components/DayDetail";
 import MonthCalendar from "@/components/MonthCalendar";
 import StudyPanel from "@/components/StudyPanel";
-import { extractDeadlines, readImageFile, summariseMaterial, visionEnabled } from "@/lib/client-api";
-import { planReply } from "@/lib/reply";
+import { MAX_FILE_BYTES, TOO_BIG_FILE } from "@/lib/document-files";
+import { subscribeStudyModel } from "@/lib/local-model";
+import { readDocument } from "@/lib/read-document";
 import { notificationBody, shouldNotify } from "@/lib/reminders";
 import { formatClock, isIsoDate, shanghaiNow, type WallClock } from "@/lib/shanghai";
-import { pagesHost, pagesReaderMessage } from "@/lib/host";
-import { asksToStudy, materialiseStudy, studyFromNotes } from "@/lib/study-notes";
+import { deskReply, type PriorNotes } from "@/lib/study-agent";
+import { materialiseStudy } from "@/lib/study-notes";
 import { loadStore, saveStore } from "@/lib/storage";
-import type { CalEvent, ChatMessage, ImagePayload, Proposal, ReminderChoice, Store, StudyDraft, StudyResult, StudySet } from "@/lib/types";
+import type { CalEvent, ChatMessage, Proposal, ReminderChoice, Store } from "@/lib/types";
 
 type View = { year: number; month: number; selected: string };
 
@@ -27,6 +28,7 @@ export default function DueLight() {
   const [activeStudy, setActiveStudy] = useState<string | null>(null);
   const [studyBusy, setStudyBusy] = useState(false);
   const [studyNote, setStudyNote] = useState<string | null>(null);
+  const [modelLine, setModelLine] = useState("The study model is loading in this browser.");
   const notifiedIds = useRef(new Set<string>());
 
   useEffect(() => {
@@ -35,10 +37,12 @@ export default function DueLight() {
     setView({ year: now.year, month: now.month, selected: now.iso });
     setStore(loadStore());
     setPerm(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
+    const unsubscribe = subscribeStudyModel(setModelLine);
     const timer = window.setInterval(() => setClock(shanghaiNow()), 15_000);
     const onVisible = () => setClock(shanghaiNow());
     document.addEventListener("visibilitychange", onVisible);
     return () => {
+      unsubscribe();
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -208,6 +212,12 @@ export default function DueLight() {
     });
   }
 
+  function priorNotes(): PriorNotes | null {
+    const latest = store?.studies[0];
+    if (!latest) return null;
+    return { title: latest.title, points: latest.points, prompts: latest.questions.map((question) => question.prompt) };
+  }
+
   async function onSend(text: string, file: File | null) {
     if (!store) return;
     const trimmed = text.trim();
@@ -220,33 +230,45 @@ export default function DueLight() {
       imageName: file?.name,
       createdAt,
     };
-    if (file && file.size > 3_200_000) {
-      pushMessages(userMessage, assistantMessage("That photo is over 3 MB. Try a smaller one, or type the date."));
+    if (file && file.size > MAX_FILE_BYTES) {
+      pushMessages(userMessage, assistantMessage(TOO_BIG_FILE, [], "question"));
       return;
     }
     pushMessages(userMessage);
-    let image: ImagePayload | null = null;
+    const prior = priorNotes();
+    let body = trimmed;
+    let fileNote: string | null = null;
     if (file) {
-      try {
-        const read = await readImageFile(file);
-        image = { name: read.name, mime: read.mime, base64: read.base64 };
-      } catch {
-        pushMessages(assistantMessage("I couldn't open that photo. Type the date instead."));
-        return;
+      const read = await readDocument(file);
+      if (!read.ok) {
+        if (!trimmed) {
+          pushMessages(assistantMessage(read.message, [], "question"));
+          return;
+        }
+        fileNote = read.message;
+      } else {
+        body = [trimmed, read.text].filter(Boolean).join("\n");
       }
     }
-    if (asksToStudy(trimmed)) {
-      await finishStudy(trimmed, image, true);
+    const reply = await deskReply({ text: body, clock: shanghaiNow(), prior, fileNote });
+    const lead = file && !fileNote ? "I read the file in this browser. " : "";
+    const message = assistantMessage(`${lead}${reply.text}`, reply.proposals, reply.kind);
+    if (!reply.study) {
+      pushMessages(message);
       return;
     }
-    const plan = await planReply({
-      text: trimmed,
-      image,
-      clock: shanghaiNow(),
-      vision: visionEnabled,
-      extract: extractDeadlines,
-    });
-    pushMessages(assistantMessage(plan.text, plan.proposals));
+    const set = materialiseStudy(reply.study, file && !fileNote ? "photo" : "notes");
+    message.studySetId = set.id;
+    setStore((current) =>
+      current
+        ? {
+            ...current,
+            studies: [set, ...(current.studies ?? [])].slice(0, 30),
+            messages: [...current.messages, message].slice(-40),
+          }
+        : current,
+    );
+    setActiveStudy(set.id);
   }
 
   function openStudy(id?: string) {
@@ -261,103 +283,39 @@ export default function DueLight() {
   async function onStudy(text: string, file: File | null): Promise<boolean> {
     const trimmed = text.trim();
     if (!store || (!trimmed && !file)) return false;
-    if (file && file.size > 3_200_000) {
-      setStudyNote("That photo is over 3 MB. Try a smaller one, or paste the notes.");
+    if (file && file.size > MAX_FILE_BYTES) {
+      setStudyNote(TOO_BIG_FILE);
       return false;
     }
     setStudyBusy(true);
     setStudyNote(null);
     try {
-      let image: ImagePayload | null = null;
+      let body = trimmed;
+      let fileNote: string | null = null;
       if (file) {
-        try {
-          const read = await readImageFile(file);
-          image = { name: read.name, mime: read.mime, base64: read.base64 };
-        } catch {
-          setStudyNote("I couldn't open that photo. Paste the notes instead.");
-          return false;
+        const read = await readDocument(file);
+        if (!read.ok) {
+          setStudyNote(read.message);
+          if (!trimmed) return false;
+          fileNote = read.message;
+        } else {
+          body = [trimmed, read.text].filter(Boolean).join("\n");
         }
       }
-      return await finishStudy(trimmed, image, false);
-    } finally {
-      setStudyBusy(false);
-    }
-  }
-
-  async function finishStudy(text: string, image: ImagePayload | null, announce: boolean): Promise<boolean> {
-    const local = text ? studyFromNotes(text) : null;
-    const line = (draft: StudyDraft) =>
-      `I pulled out ${draft.points.length} important points, made ${draft.flashcards.length} flashcards, and wrote ${draft.questions.length} exam-style questions that ask you to apply the ideas.`;
-    const save = (draft: StudyDraft, source: StudySet["source"], message: string) => {
-      const set = materialiseStudy(draft, source);
-      const assistant = announce ? { ...assistantMessage(message), studySetId: set.id } : null;
-      setStore((current) =>
-        current
-          ? {
-              ...current,
-              studies: [set, ...(current.studies ?? [])].slice(0, 30),
-              messages: assistant ? [...current.messages, assistant].slice(-40) : current.messages,
-            }
-          : current,
-      );
+      const reply = await deskReply({ text: body, clock: shanghaiNow(), prior: priorNotes(), fileNote });
+      if (!reply.study) {
+        setStudyNote(reply.text);
+        return false;
+      }
+      const set = materialiseStudy(reply.study, file && !fileNote ? "photo" : "notes");
+      setStore((current) => (current ? { ...current, studies: [set, ...(current.studies ?? [])].slice(0, 30) } : current));
       setActiveStudy(set.id);
       setDesk("study");
       setStudyNote(null);
       return true;
-    };
-    const fail = (message: string) => {
-      if (announce) pushMessages(assistantMessage(message));
-      else setStudyNote(message);
-      return false;
-    };
-
-    if (image) {
-      let vision = false;
-      try {
-        vision = await visionEnabled();
-      } catch {
-        vision = false;
-      }
-      if (!vision) {
-        if (pagesHost) {
-          if (local) return save(local, "notes", `${line(local)} ${pagesReaderMessage}`);
-          return fail(pagesReaderMessage);
-        }
-        if (local) {
-          return save(
-            local,
-            "notes",
-            `${line(local)} The photo was not read. Add an OpenAI key named OPENAI_API_KEY to read pictures. Nothing from the photo was saved.`,
-          );
-        }
-        return fail(
-          "I can't read that photo yet. Add an OpenAI key named OPENAI_API_KEY for this app. Nothing from the picture was saved. Clear notes with headings or bullets still summarise.",
-        );
-      }
-      let result: StudyResult;
-      try {
-        result = await summariseMaterial({ text, image: { mime: image.mime, data: image.base64 } });
-      } catch {
-        result = { ok: false, reason: "upstream", message: "The reader didn't answer." };
-      }
-      if (result.ok) return save(result.study, "photo", line(result.study));
-      if (local) return save(local, "notes", `${result.message} I used the typed notes instead. ${line(local)}`);
-      return fail(result.message);
+    } finally {
+      setStudyBusy(false);
     }
-
-    if (local) return save(local, "notes", line(local));
-    let result: StudyResult;
-    try {
-      result = await summariseMaterial({ text });
-    } catch {
-      result = {
-        ok: false,
-        reason: "upstream",
-        message: "I couldn't summarise that, and the reader didn't answer. Try headings and bullet points.",
-      };
-    }
-    if (result.ok) return save(result.study, "model", line(result.study));
-    return fail(result.message);
   }
 
   function pushMessages(...items: ChatMessage[]) {
@@ -428,6 +386,7 @@ export default function DueLight() {
           activeId={activeStudy}
           note={studyNote}
           busy={studyBusy}
+          modelLine={modelLine}
           onSummarise={onStudy}
           onSelect={setActiveStudy}
           onRemove={(id) => {
@@ -483,6 +442,7 @@ export default function DueLight() {
           onDiscard={discardProposal}
           onAddAll={addAll}
           onOpenStudy={openStudy}
+          modelLine={modelLine}
         />
       </div>
       )}
@@ -490,12 +450,13 @@ export default function DueLight() {
   );
 }
 
-function assistantMessage(text: string, proposals: Proposal[] = []): ChatMessage {
+function assistantMessage(text: string, proposals: Proposal[] = [], kind?: ChatMessage["kind"]): ChatMessage {
   return {
     id: crypto.randomUUID(),
     role: "assistant",
     text,
     proposals,
+    kind,
     createdAt: new Date().toISOString(),
   };
 }

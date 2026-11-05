@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { access, cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { copyReaders } from "./copy-readers.mjs";
 
 const root = process.cwd();
 const apiDir = path.join(root, "app", "api");
@@ -27,6 +28,7 @@ function run(command, args, env) {
 
 let moved = false;
 try {
+  await copyReaders(root);
   await rm(stashDir, { recursive: true, force: true });
   if (await exists(apiDir)) {
     await rename(apiDir, stashDir);

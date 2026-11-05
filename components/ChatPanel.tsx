@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FILE_ACCEPT } from "@/lib/document-files";
 import { REMINDER_OPTIONS } from "@/lib/reminders";
 import { isIsoDate } from "@/lib/shanghai";
 import type { ChatMessage, Kind, Proposal, ReminderChoice } from "@/lib/types";
@@ -13,6 +14,7 @@ export default function ChatPanel({
   onDiscard,
   onAddAll,
   onOpenStudy,
+  modelLine,
 }: {
   messages: ChatMessage[];
   onSend: (text: string, file: File | null) => Promise<void>;
@@ -21,6 +23,7 @@ export default function ChatPanel({
   onDiscard: (messageId: string, proposalId: string) => void;
   onAddAll: (messageId: string) => void;
   onOpenStudy: (studySetId: string) => void;
+  modelLine: string;
 }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -61,12 +64,13 @@ export default function ChatPanel({
   }
 
   return (
-    <section className="card chat" id="chat" aria-label="Deadline chat">
-      <h2 className="section-label">Add a deadline</h2>
+    <section className="card chat" id="chat" aria-label="Due Light desk">
+      <h2 className="section-label">Desk</h2>
+      <p className="model-status" role="status" data-model-line="true">{modelLine}</p>
       <div className="messages" ref={logRef}>
         {messages.length === 0 ? (
           <div className="empty-chat">
-            <p>Tell me a due date, or attach a photo of the sheet. Nothing is saved until you confirm it. To revise notes, open Study, or ask me to summarise them.</p>
+            <p>Send a due date, course notes, a photo, or a PDF. A later question stays on the notes you already gave. Nothing is marked on the calendar until you confirm it.</p>
             <div className="examples">
               {EXAMPLES.map((example) => (
                 <button key={example} type="button" className="example" onClick={() => void submit(example, null)}>
@@ -80,10 +84,11 @@ export default function ChatPanel({
           message.role === "user" ? (
             <div key={message.id} className="msg-user" data-role="user">
               <p>{message.text || "Photo"}</p>
-              {message.imageName ? <span className="photo-name">Photo: {message.imageName}</span> : null}
+              {message.imageName ? <span className="photo-name">File: {message.imageName}</span> : null}
             </div>
           ) : (
-            <div key={message.id} className="msg-assistant" data-role="assistant">
+            <div key={message.id} className="msg-assistant" data-role="assistant" data-kind={message.kind ?? ""}>
+              {message.kind ? <p className="desk-kind">{kindLabel(message.kind)}</p> : null}
               <p>{message.text}</p>
               {message.proposals?.map((proposal) => (
                 <ProposalCard
@@ -121,11 +126,12 @@ export default function ChatPanel({
         }}
       >
         <label className="field">
-          Deadline note
+          Note
           <textarea
+            aria-label="Deadline note"
             value={text}
             rows={2}
-            placeholder="Essay due Nov 14, or quiz Friday 10am"
+            placeholder="A due date, course notes, or a follow-up"
             onChange={(change) => setText(change.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
@@ -135,9 +141,9 @@ export default function ChatPanel({
             }}
           />
         </label>
-        {file && preview ? (
+        {file ? (
           <div className="preview">
-            <img src={preview} alt="" />
+            {preview && file.type.startsWith("image/") ? <img src={preview} alt="" /> : null}
             <span>{file.name}</span>
             <button
               type="button"
@@ -147,31 +153,36 @@ export default function ChatPanel({
                 if (fileRef.current) fileRef.current.value = "";
               }}
             >
-              Remove photo
+              Remove file
             </button>
           </div>
         ) : null}
         <div className="composer-actions">
           <button type="button" className="icon-btn" onClick={() => fileRef.current?.click()}>
-            Add photo
+            Add photo or PDF
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
+            accept={FILE_ACCEPT}
             hidden
             onChange={(change) => setFile(change.target.files?.[0] ?? null)}
           />
           <button type="submit" className="primary" disabled={busy || (!text.trim() && !file)}>
-            {busy ? "Reading…" : "Mark dates"}
+            {busy ? "Reading…" : "Send"}
           </button>
         </div>
-        <p className="fine-print">
-          A clear typed date stays in this browser. Photos, and notes without a clear date, are sent to OpenAI only when a key is set, and are not stored.
-        </p>
+        <p className="fine-print">Photos, PDFs, notes, and the study model stay in this browser. They are not uploaded.</p>
       </form>
     </section>
   );
+}
+
+function kindLabel(kind: NonNullable<ChatMessage["kind"]>): string {
+  if (kind === "deadline") return "Deadline";
+  if (kind === "notes") return "Course notes";
+  if (kind === "followup") return "Follow-up";
+  return "Question";
 }
 
 function ProposalCard({

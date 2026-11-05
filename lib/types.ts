@@ -30,6 +30,7 @@ export type ChatMessage = {
   imageName?: string;
   proposals?: Proposal[];
   studySetId?: string;
+  kind?: "deadline" | "notes" | "question" | "followup";
   createdAt: string;
 };
 
