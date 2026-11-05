@@ -1,3 +1,4 @@
+import { pagesHost, pagesReaderMessage } from "./host";
 import { parseDeadlines } from "./parse-deadlines";
 import type { WallClock } from "./shanghai";
 import type { DraftEvent, ExtractResult, ImagePayload, Proposal } from "./types";
@@ -52,6 +53,12 @@ export async function planReply(input: {
       vision = false;
     }
     if (!vision) {
+      if (pagesHost) {
+        return {
+          text: local.length ? `${foundText(local)} ${pagesReaderMessage}` : pagesReaderMessage,
+          proposals: toProposals(local),
+        };
+      }
       if (local.length) {
         return {
           text: `${foundText(local)} The photo was not read. Add an OpenAI key named OPENAI_API_KEY to read pictures. Nothing from the photo was saved.`,

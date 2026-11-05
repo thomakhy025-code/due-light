@@ -1,6 +1,8 @@
+import { pagesHost, pagesReaderMessage } from "./host";
 import type { ExtractResult, StudyResult } from "./types";
 
 export async function visionEnabled(): Promise<boolean> {
+  if (pagesHost) return false;
   const response = await fetch("/api/extract", {
     headers: { "x-due-light": "1" },
     cache: "no-store",
@@ -14,6 +16,7 @@ export async function extractDeadlines(body: {
   text?: string;
   image?: { mime: string; data: string };
 }): Promise<ExtractResult> {
+  if (pagesHost) return { ok: false, reason: "no_server", message: pagesReaderMessage };
   const response = await fetch("/api/extract", {
     method: "POST",
     headers: { "content-type": "application/json", "x-due-light": "1" },
@@ -34,6 +37,7 @@ export async function summariseMaterial(body: {
   text?: string;
   image?: { mime: string; data: string };
 }): Promise<StudyResult> {
+  if (pagesHost) return { ok: false, reason: "no_server", message: pagesReaderMessage };
   const response = await fetch("/api/study", {
     method: "POST",
     headers: { "content-type": "application/json", "x-due-light": "1" },

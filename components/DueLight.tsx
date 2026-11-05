@@ -10,6 +10,7 @@ import { extractDeadlines, readImageFile, summariseMaterial, visionEnabled } fro
 import { planReply } from "@/lib/reply";
 import { notificationBody, shouldNotify } from "@/lib/reminders";
 import { formatClock, isIsoDate, shanghaiNow, type WallClock } from "@/lib/shanghai";
+import { pagesHost, pagesReaderMessage } from "@/lib/host";
 import { asksToStudy, materialiseStudy, studyFromNotes } from "@/lib/study-notes";
 import { loadStore, saveStore } from "@/lib/storage";
 import type { CalEvent, ChatMessage, ImagePayload, Proposal, ReminderChoice, Store, StudyDraft, StudyResult, StudySet } from "@/lib/types";
@@ -318,6 +319,10 @@ export default function DueLight() {
         vision = false;
       }
       if (!vision) {
+        if (pagesHost) {
+          if (local) return save(local, "notes", `${line(local)} ${pagesReaderMessage}`);
+          return fail(pagesReaderMessage);
+        }
         if (local) {
           return save(
             local,
