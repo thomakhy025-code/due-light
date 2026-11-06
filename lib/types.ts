@@ -79,6 +79,7 @@ export type Store = {
   userId: string;
   events: CalEvent[];
   messages: ChatMessage[];
+  studyMessages: ChatMessage[];
   studies: StudySet[];
 };
 

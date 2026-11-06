@@ -22,6 +22,15 @@ export function contentWords(text: string): string[] {
 
 const EXTRA_WORDS = new Set(["notes", "step", "process", "because", "without", "across", "still", "line"]);
 
+export function notesCoverQuestion(question: string, points: string[]): boolean {
+  const asked = contentWords(question).filter((word) => word.length >= 5);
+  if (asked.length === 0 || points.length === 0) return false;
+  const hay = new Set(points.flatMap((point) => contentWords(point)));
+  const hits = asked.filter((word) => hay.has(word));
+  if (hits.length >= 2) return true;
+  return asked.length === 1 && hits.length === 1;
+}
+
 export function groundedInSource(output: string, source: string): boolean {
   const sourceWords = new Set(contentWords(source));
   const used = contentWords(output).filter((word) => word.length >= 4);

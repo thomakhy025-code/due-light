@@ -27,7 +27,6 @@ export default function ComingUp({
             return (
               <article key={event.id} className="card up-card" data-due={due} data-event-id={event.id}>
                 <p className="when">{dayRelation(event.date, today)}</p>
-                <p className={`kind kind-${event.kind}`}>{event.kind === "test" ? "Test" : "Homework"}</p>
                 <h3>{event.title}</h3>
                 <p className="meta">{event.time ? formatTime(event.time) : "Any time"}</p>
                 {due ? <p className="due-flag">Reminder due</p> : null}

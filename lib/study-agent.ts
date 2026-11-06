@@ -1,6 +1,7 @@
-import { answerFromNotes, deskSummary, groundedInSource } from "./material-questions";
+import { answerFromNotes, deskSummary, groundedInSource, notesCoverQuestion } from "./material-questions";
 import { prepareStudyModel, studyModelSentence, studyModelState, MODEL_FAILED } from "./local-model";
 import { parseDeadlines } from "./parse-deadlines";
+import { lookupPublicFact } from "./public-lookup";
 import { formatLong, type WallClock } from "./shanghai";
 import { asksToStudy, studyFromNotes } from "./study-notes";
 import type { DraftEvent, Proposal, StudyDraft } from "./types";
@@ -118,26 +119,37 @@ export async function deskReply(input: {
   fileNote?: string | null;
 }): Promise<DeskReply> {
   const composed = composeDeskReply(input);
-  let text = input.fileNote ? `${input.fileNote}\n\n${composed.text}` : composed.text;
-  const ready = studyModelState() === "ready" ? Promise.resolve() : prepareStudyModel();
-  if (studyModelState() !== "ready") {
-    await Promise.race([ready, new Promise((resolve) => setTimeout(resolve, 1200))]);
-  }
-  if (studyModelState() === "ready" && (composed.kind === "notes" || composed.kind === "followup")) {
-    const source = composed.kind === "followup" ? (input.prior?.points.join(" ") ?? "") : input.text;
-    const prompt =
-      composed.kind === "followup"
-        ? `answer the question using only the context. context: ${source.slice(0, 600)} question: ${input.text.slice(0, 200)}`
-        : `summarize: ${input.text.slice(0, 700)}`;
-    const sentence = await studyModelSentence(prompt);
-    if (sentence && groundedInSource(sentence, source) && !/an exam describes a new situation/i.test(sentence)) {
-      text = `${text}\n\nStudy model: ${sentence}`;
+  const uncovered =
+    (composed.kind === "question" || composed.kind === "followup") &&
+    !notesCoverQuestion(input.text, input.prior?.points ?? []);
+  let text = composed.text;
+  if (uncovered) {
+    const fact = await lookupPublicFact(input.text);
+    const aside = input.prior
+      ? `Your notes don’t mention that. They still cover ${input.prior.title}.`
+      : "Nothing in the saved notes covers that.";
+    text = fact.ok ? `Public page. ${fact.fact} (${fact.source}).\n\n${aside}` : `${fact.message}\n\n${composed.text}`;
+  } else {
+    const ready = studyModelState() === "ready" ? Promise.resolve() : prepareStudyModel();
+    if (studyModelState() !== "ready") {
+      await Promise.race([ready, new Promise((resolve) => setTimeout(resolve, 1200))]);
+    }
+    if (studyModelState() === "ready" && (composed.kind === "notes" || composed.kind === "followup")) {
+      const source = composed.kind === "followup" ? (input.prior?.points.join(" ") ?? "") : input.text;
+      const prompt =
+        composed.kind === "followup"
+          ? `answer the question using only the context. context: ${source.slice(0, 600)} question: ${input.text.slice(0, 200)}`
+          : `summarize: ${input.text.slice(0, 700)}`;
+      const sentence = await studyModelSentence(prompt);
+      if (sentence && groundedInSource(sentence, source) && !/an exam describes a new situation/i.test(sentence)) {
+        text = `${text}\n\nStudy model: ${sentence}`;
+      }
     }
   }
-  const failed = studyModelState() === "failed";
+  if (input.fileNote) text = `${input.fileNote}\n\n${text}`;
   return {
     ...composed,
     text,
-    modelNote: failed ? MODEL_FAILED : null,
+    modelNote: studyModelState() === "failed" ? MODEL_FAILED : null,
   };
 }

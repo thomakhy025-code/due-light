@@ -95,7 +95,7 @@ await page.screenshot({ path: `${outDir}/pdf-deadline.png`, fullPage: true });
 
 await page.locator("#tab-study").click();
 await page.locator("#study input[type='file']").setInputFiles(`${outDir}/notes.png`);
-await page.locator("#summarise").click();
+await page.locator("#study").getByRole("button", { name: "Send" }).click();
 await page.waitForSelector("[data-study-title]", { timeout: 90000 });
 const title = await page.locator("[data-study-title]").innerText();
 const points = await page.locator("[data-point]").allInnerTexts();
@@ -104,7 +104,7 @@ check("photo becomes a study set", /cell respiration/i.test(title) && /cytoplasm
 check("photo questions use the notes", /oxygen|glycolysis|osmosis|krebs/i.test(await page.locator("#study").innerText()));
 check("photo questions are not a fixed template", !/an exam describes a new situation/i.test(await page.locator("#study").innerText()));
 check("photo made flashcards and questions", (await page.locator(".flip").count()) === 1 && (await page.locator("[data-question]").count()) >= 2);
-await page.getByRole("button", { name: "Summarise" }).waitFor();
+await page.locator("#study").getByRole("button", { name: "Send" }).waitFor();
 await page.screenshot({ path: `${outDir}/photo-study.png`, fullPage: true });
 check("files stay in the browser", leaked.length === 0, leaked.join(" "));
 check("no page errors", errors.length === 0, errors.join(" | "));

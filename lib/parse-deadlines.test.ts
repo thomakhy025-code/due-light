@@ -92,6 +92,14 @@ test("reads Chinese dates and weekdays without calling a model", () => {
   assert.equal(titles("后天交作业")[0]?.date, "2026-11-07");
 });
 
+test("a course code becomes the title and 0440 stays 04:40", () => {
+  assert.deepEqual(titles("i have lang3030 on 7 nov 0440"), [
+    { title: "LANG3030", date: "2026-11-07", time: "04:40", kind: "homework" },
+  ]);
+  assert.equal(titles("LANG3030 quiz on November 9 at 15:30")[0]?.title, "LANG3030");
+  assert.equal(titles("Essay due Nov 14")[0]?.title, "Essay");
+});
+
 test("ignores notes with no date and bare times", () => {
   assert.deepEqual(titles("hello there"), []);
   assert.deepEqual(titles("see you at 5"), []);

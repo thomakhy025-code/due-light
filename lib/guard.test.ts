@@ -78,6 +78,8 @@ test("events persist for one anonymous browser id", () => {
       },
     ],
     messages: [],
+    studyMessages: [],
+    studies: [],
   });
   assert.equal(saved, true);
   const again = loadStore();

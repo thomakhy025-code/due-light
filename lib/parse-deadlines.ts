@@ -106,7 +106,30 @@ export function normalizeDeadlineText(text: string, clock: WallClock): string {
     .replace(/今天/g, " today ")
     .replace(/\b(?:the\s+)?day\s+after\s+tomorrow\b/gi, " in 2 days ");
   value = value.replace(/[ \t]{2,}/g, " ").trim();
-  return expandOrdinals(value, clock);
+  return expandCompactTimes(expandOrdinals(value, clock));
+}
+
+const COURSE_CODE = /\b([A-Za-z]{4})(\d{4})\b/;
+
+export function courseCodeTitle(text: string): string | null {
+  const match = COURSE_CODE.exec(text);
+  if (!match) return null;
+  return `${match[1].toUpperCase()}${match[2]}`;
+}
+
+function expandCompactTimes(value: string): string {
+  return value.replace(
+    /(^|[^A-Za-z0-9])([01]\d|2[0-3])([0-5]\d)\b/g,
+    (full, prefix: string, hour: string, minute: string, offset: number) => {
+      const lookbehind = value.slice(Math.max(0, offset - 18), offset + prefix.length);
+      const nearDate =
+        /\b(?:on|at|@)\s*$/i.test(lookbehind) ||
+        /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*$/i.test(lookbehind) ||
+        /\b\d{1,2}(?:st|nd|rd|th)?\s+$/i.test(lookbehind);
+      if (!nearDate) return full;
+      return `${prefix}${hour}:${minute}`;
+    },
+  );
 }
 
 function isBareTime(matchText: string): boolean {
@@ -178,6 +201,8 @@ function capitalize(value: string): string {
 }
 
 function titleFrom(before: string, after: string, kind: Kind): string {
+  const coded = courseCodeTitle(`${before} ${after}`);
+  if (coded) return coded;
   const primary = cleanClause(before);
   if (primary) return capitalize(primary);
   const secondary = cleanClause((after.split(/[\n.]+/)[0] ?? "").slice(0, 80));

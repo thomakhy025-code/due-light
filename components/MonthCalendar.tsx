@@ -39,10 +39,6 @@ export default function MonthCalendar({
         </div>
       </div>
       <p className="meta">{inMonth === 0 ? "Nothing marked this month." : `${inMonth} marked this month.`}</p>
-      <div className="legend">
-        <span><i className="mark-homework" /> Homework</span>
-        <span><i className="mark-test" /> Test</span>
-      </div>
       <div className="weekdays" aria-hidden="true">
         {WEEKDAY_LABELS.map((label) => (
           <span key={label}>{label}</span>
@@ -52,8 +48,6 @@ export default function MonthCalendar({
         {cells.map((iso, index) => {
           if (!iso) return <span key={`blank-${index}`} />;
           const dayEvents = events.filter((event) => event.date === iso);
-          const homework = dayEvents.some((event) => event.kind === "homework");
-          const test = dayEvents.some((event) => event.kind === "test");
           const countLabel = dayEvents.length === 1 ? "1 deadline" : `${dayEvents.length} deadlines`;
           return (
             <button
@@ -70,8 +64,7 @@ export default function MonthCalendar({
             >
               <span className="num">{Number(iso.slice(-2))}</span>
               <span className="marks" aria-hidden="true">
-                {homework ? <span className="mark mark-homework" /> : null}
-                {test ? <span className="mark mark-test" /> : null}
+                {dayEvents.length > 0 ? <span className="mark mark-due" /> : null}
               </span>
             </button>
           );

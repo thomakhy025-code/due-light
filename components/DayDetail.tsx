@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { compareEvents, REMINDER_OPTIONS } from "@/lib/reminders";
 import { formatLong, formatTime, isIsoDate } from "@/lib/shanghai";
-import type { CalEvent, Kind, ReminderChoice } from "@/lib/types";
+import type { CalEvent, ReminderChoice } from "@/lib/types";
 
 export default function DayDetail({
   selected,
@@ -27,7 +27,6 @@ export default function DayDetail({
         list.map((event) => (
           <article key={event.id} className="event-row" data-event-id={event.id}>
             <div className="event-head">
-              <p className={`kind kind-${event.kind}`}>{event.kind === "test" ? "Test" : "Homework"}</p>
               <p className="meta">{event.time ? formatTime(event.time) : "Any time"}</p>
             </div>
             <div className="fields">
@@ -59,22 +58,6 @@ export default function DayDetail({
                   onChange={(change) => onPatch(event.id, { time: change.target.value || null })}
                 />
               </label>
-              <div className="field wide">
-                <span>Kind</span>
-                <div className="segment">
-                  {(["homework", "test"] as Kind[]).map((kind) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      data-kind={kind}
-                      aria-pressed={event.kind === kind}
-                      onClick={() => onPatch(event.id, { kind })}
-                    >
-                      {kind === "test" ? "Test" : "Homework"}
-                    </button>
-                  ))}
-                </div>
-              </div>
               <label className="field wide">
                 Reminder
                 <select

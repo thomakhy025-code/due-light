@@ -153,20 +153,23 @@ export function loadStore(): Store {
   try {
     userId = getOrCreateUserId();
     const raw = localStorage.getItem(dataKey(userId));
-    if (!raw) return { userId, events: [], messages: [], studies: [] };
-    const parsed = JSON.parse(raw) as { events?: unknown; messages?: unknown; studies?: unknown };
+    if (!raw) return { userId, events: [], messages: [], studyMessages: [], studies: [] };
+    const parsed = JSON.parse(raw) as { events?: unknown; messages?: unknown; studyMessages?: unknown; studies?: unknown };
     const events = Array.isArray(parsed.events)
       ? parsed.events.map(sanitizeEvent).filter((item): item is CalEvent => item !== null).slice(-500)
       : [];
     const messages = Array.isArray(parsed.messages)
       ? parsed.messages.map(sanitizeMessage).filter((item): item is ChatMessage => item !== null).slice(-40)
       : [];
+    const studyMessages = Array.isArray(parsed.studyMessages)
+      ? parsed.studyMessages.map(sanitizeMessage).filter((item): item is ChatMessage => item !== null).slice(-40)
+      : [];
     const studies = Array.isArray(parsed.studies)
       ? parsed.studies.map(sanitizeStudy).filter((item): item is StudySet => item !== null).slice(0, 30)
       : [];
-    return { userId, events, messages, studies };
+    return { userId, events, messages, studyMessages, studies };
   } catch {
-    return { userId: userId || crypto.randomUUID(), events: [], messages: [], studies: [] };
+    return { userId: userId || crypto.randomUUID(), events: [], messages: [], studyMessages: [], studies: [] };
   }
 }
 
@@ -174,9 +177,10 @@ export function saveStore(store: Store): boolean {
   try {
     const events = store.events.map(sanitizeEvent).filter((item): item is CalEvent => item !== null).slice(-500);
     const messages = store.messages.map(sanitizeMessage).filter((item): item is ChatMessage => item !== null).slice(-40);
+    const studyMessages = (store.studyMessages ?? []).map(sanitizeMessage).filter((item): item is ChatMessage => item !== null).slice(-40);
     const studies = (store.studies ?? []).map(sanitizeStudy).filter((item): item is StudySet => item !== null).slice(0, 30);
     localStorage.setItem(ID_KEY, store.userId);
-    localStorage.setItem(dataKey(store.userId), JSON.stringify({ version: 1, events, messages, studies }));
+    localStorage.setItem(dataKey(store.userId), JSON.stringify({ version: 1, events, messages, studyMessages, studies }));
     return true;
   } catch {
     return false;

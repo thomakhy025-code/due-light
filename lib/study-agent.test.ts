@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { groundedInSource } from "./material-questions";
+import { groundedInSource, notesCoverQuestion } from "./material-questions";
 import { composeDeskReply } from "./study-agent";
 import { SAMPLE_NOTES } from "./study-notes";
 import type { WallClock } from "./shanghai";
@@ -59,6 +59,12 @@ test("the study model is kept only when it stays inside the notes", () => {
   const notes = "Glycolysis splits glucose into pyruvate in the cytoplasm and does not need oxygen.";
   assert.equal(groundedInSource("glycolysis is a chemical that is used to make glucose.", notes), false);
   assert.equal(groundedInSource("pyruvate in the cytoplasm and does not need oxygen", notes), true);
+});
+
+test("a follow-up stays on the notes and an outside question does not", () => {
+  const points = ["Glycolysis splits glucose into pyruvate in the cytoplasm and does not need oxygen."];
+  assert.equal(notesCoverQuestion("Why doesn't glycolysis need oxygen?", points), true);
+  assert.equal(notesCoverQuestion("What is photosynthesis?", points), false);
 });
 
 test("a question with no notes does not invent an answer", () => {

@@ -26,8 +26,6 @@ export default function DueLight() {
   const [saveWarning, setSaveWarning] = useState(false);
   const [desk, setDesk] = useState<"calendar" | "study">("calendar");
   const [activeStudy, setActiveStudy] = useState<string | null>(null);
-  const [studyBusy, setStudyBusy] = useState(false);
-  const [studyNote, setStudyNote] = useState<string | null>(null);
   const [modelLine, setModelLine] = useState("The study model is loading in this browser.");
   const notifiedIds = useRef(new Set<string>());
 
@@ -124,25 +122,18 @@ export default function DueLight() {
   function updateProposal(messageId: string, proposalId: string, patch: Partial<Proposal>) {
     setStore((current) => {
       if (!current) return current;
-      return {
-        ...current,
-        messages: current.messages.map((message) =>
-          message.id !== messageId
-            ? message
-            : {
-                ...message,
-                proposals: message.proposals?.map((proposal) =>
-                  proposal.id === proposalId && proposal.status === "pending" ? { ...proposal, ...patch } : proposal,
-                ),
-              },
+      return mapOwnedMessage(current, messageId, (message) => ({
+        ...message,
+        proposals: message.proposals?.map((proposal) =>
+          proposal.id === proposalId && proposal.status === "pending" ? { ...proposal, ...patch } : proposal,
         ),
-      };
+      }));
     });
   }
 
   function addProposal(messageId: string, proposalId: string) {
     if (!store) return;
-    const proposal = store.messages.find((message) => message.id === messageId)?.proposals?.find((item) => item.id === proposalId);
+    const proposal = proposalFrom(store, messageId, proposalId);
     if (!proposal || proposal.status !== "pending") return;
     const title = proposal.title.trim();
     if (!title || !isIsoDate(proposal.date)) return;
@@ -158,9 +149,7 @@ export default function DueLight() {
     };
     setStore((current) => {
       if (!current) return current;
-      const latest = current.messages
-        .find((message) => message.id === messageId)
-        ?.proposals?.find((item) => item.id === proposalId);
+      const latest = proposalFrom(current, messageId, proposalId);
       if (!latest || latest.status !== "pending") return current;
       const saved: CalEvent = {
         ...event,
@@ -170,20 +159,13 @@ export default function DueLight() {
         kind: latest.kind,
         reminder: latest.reminder,
       };
-      return {
-        ...current,
-        events: [...current.events, saved],
-        messages: current.messages.map((message) =>
-          message.id !== messageId
-            ? message
-            : {
-                ...message,
-                proposals: message.proposals?.map((item) =>
-                  item.id === proposalId ? { ...item, status: "added", eventId: saved.id, title: saved.title } : item,
-                ),
-              },
+      const next = mapOwnedMessage(current, messageId, (message) => ({
+        ...message,
+        proposals: message.proposals?.map((item) =>
+          item.id === proposalId ? { ...item, status: "added", eventId: saved.id, title: saved.title } : item,
         ),
-      };
+      }));
+      return { ...next, events: [...current.events, saved] };
     });
     selectDate(proposal.date);
   }
@@ -196,19 +178,10 @@ export default function DueLight() {
   function discardProposal(messageId: string, proposalId: string) {
     setStore((current) => {
       if (!current) return current;
-      return {
-        ...current,
-        messages: current.messages.map((message) =>
-          message.id !== messageId
-            ? message
-            : {
-                ...message,
-                proposals: message.proposals?.map((proposal) =>
-                  proposal.id === proposalId ? { ...proposal, status: "discarded" } : proposal,
-                ),
-              },
-        ),
-      };
+      return mapOwnedMessage(current, messageId, (message) => ({
+        ...message,
+        proposals: message.proposals?.map((proposal) => (proposal.id === proposalId ? { ...proposal, status: "discarded" } : proposal)),
+      }));
     });
   }
 
@@ -280,42 +253,62 @@ export default function DueLight() {
     setActiveStudy((current) => current ?? store?.studies[0]?.id ?? null);
   }
 
-  async function onStudy(text: string, file: File | null): Promise<boolean> {
+  async function onStudySend(text: string, file: File | null) {
+    if (!store) return;
     const trimmed = text.trim();
-    if (!store || (!trimmed && !file)) return false;
+    if (!trimmed && !file) return;
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      text: trimmed,
+      imageName: file?.name,
+      createdAt: new Date().toISOString(),
+    };
     if (file && file.size > MAX_FILE_BYTES) {
-      setStudyNote(TOO_BIG_FILE);
-      return false;
+      pushStudy(userMessage, assistantMessage(TOO_BIG_FILE, [], "question"));
+      return;
     }
-    setStudyBusy(true);
-    setStudyNote(null);
-    try {
-      let body = trimmed;
-      let fileNote: string | null = null;
-      if (file) {
-        const read = await readDocument(file);
-        if (!read.ok) {
-          setStudyNote(read.message);
-          if (!trimmed) return false;
-          fileNote = read.message;
-        } else {
-          body = [trimmed, read.text].filter(Boolean).join("\n");
+    pushStudy(userMessage);
+    const prior = priorNotes();
+    let body = trimmed;
+    let fileNote: string | null = null;
+    if (file) {
+      const read = await readDocument(file);
+      if (!read.ok) {
+        if (!trimmed) {
+          pushStudy(assistantMessage(read.message, [], "question"));
+          return;
         }
+        fileNote = read.message;
+      } else {
+        body = [trimmed, read.text].filter(Boolean).join("\n");
       }
-      const reply = await deskReply({ text: body, clock: shanghaiNow(), prior: priorNotes(), fileNote });
-      if (!reply.study) {
-        setStudyNote(reply.text);
-        return false;
-      }
-      const set = materialiseStudy(reply.study, file && !fileNote ? "photo" : "notes");
-      setStore((current) => (current ? { ...current, studies: [set, ...(current.studies ?? [])].slice(0, 30) } : current));
-      setActiveStudy(set.id);
-      setDesk("study");
-      setStudyNote(null);
-      return true;
-    } finally {
-      setStudyBusy(false);
     }
+    const reply = await deskReply({ text: body, clock: shanghaiNow(), prior, fileNote });
+    const lead = file && !fileNote ? "I read the file in this browser. " : "";
+    const message = assistantMessage(`${lead}${reply.text}`, reply.proposals, reply.kind);
+    if (!reply.study) {
+      pushStudy(message);
+      return;
+    }
+    const set = materialiseStudy(reply.study, file && !fileNote ? "photo" : "notes");
+    message.studySetId = set.id;
+    setStore((current) =>
+      current
+        ? {
+            ...current,
+            studies: [set, ...(current.studies ?? [])].slice(0, 30),
+            studyMessages: [...(current.studyMessages ?? []), message].slice(-40),
+          }
+        : current,
+    );
+    setActiveStudy(set.id);
+  }
+
+  function pushStudy(...items: ChatMessage[]) {
+    setStore((current) =>
+      current ? { ...current, studyMessages: [...(current.studyMessages ?? []), ...items].slice(-40) } : current,
+    );
   }
 
   function pushMessages(...items: ChatMessage[]) {
@@ -382,12 +375,14 @@ export default function DueLight() {
       />
       {desk === "study" ? (
         <StudyPanel
+          messages={store.studyMessages ?? []}
           studies={store.studies}
           activeId={activeStudy}
-          note={studyNote}
-          busy={studyBusy}
           modelLine={modelLine}
-          onSummarise={onStudy}
+          onSend={onStudySend}
+          onUpdateProposal={updateProposal}
+          onAdd={addProposal}
+          onDiscard={discardProposal}
           onSelect={setActiveStudy}
           onRemove={(id) => {
             setStore((current) => (current ? { ...current, studies: current.studies.filter((set) => set.id !== id) } : current));
@@ -448,6 +443,24 @@ export default function DueLight() {
       )}
     </main>
   );
+}
+
+function proposalFrom(current: Store, messageId: string, proposalId: string): Proposal | undefined {
+  for (const list of [current.messages, current.studyMessages ?? []]) {
+    const proposal = list.find((message) => message.id === messageId)?.proposals?.find((item) => item.id === proposalId);
+    if (proposal) return proposal;
+  }
+  return undefined;
+}
+
+function mapOwnedMessage(current: Store, messageId: string, update: (message: ChatMessage) => ChatMessage): Store {
+  if (current.messages.some((message) => message.id === messageId)) {
+    return { ...current, messages: current.messages.map((message) => (message.id === messageId ? update(message) : message)) };
+  }
+  return {
+    ...current,
+    studyMessages: (current.studyMessages ?? []).map((message) => (message.id === messageId ? update(message) : message)),
+  };
 }
 
 function assistantMessage(text: string, proposals: Proposal[] = [], kind?: ChatMessage["kind"]): ChatMessage {

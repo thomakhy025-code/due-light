@@ -30,9 +30,8 @@ await page.waitForSelector("#calendar");
 check("calendar is the default view", await page.locator("#calendar").isVisible());
 
 await page.locator("#tab-study").click();
-await page.waitForSelector("#course-notes");
-await page.getByRole("button", { name: "Use a sample" }).click();
-await page.locator("#summarise").click();
+await page.waitForSelector("#study");
+await page.getByRole("button", { name: "Read the cell notes" }).click();
 await page.waitForSelector("[data-study-title]");
 const title = await page.locator("[data-study-title]").innerText();
 check("sample notes get a title", title === "Cell respiration", title);
@@ -60,10 +59,12 @@ await page.waitForSelector("[data-study-title]");
 check("refresh keeps the study set", (await page.locator("[data-study-title]").innerText()) === "Cell respiration");
 
 const beforeMessy = studyPosts;
-await page.locator("#course-notes").fill("so like cells do this energy thing and water moves around idk it's kinda important");
-await page.locator("#summarise").click();
-await page.getByText(/clear date|bullet notes|study model/i).waitFor();
+await page.getByLabel("Study note").fill("so like cells do this energy thing and water moves around idk it's kinda important");
+await page.locator("#study").getByRole("button", { name: "Send" }).click();
+await page.locator("#study [data-role='assistant']").last().waitFor();
+const messy = await page.locator("#study").innerText();
 check("messy notes stay in the browser", studyPosts === beforeMessy, `posts=${studyPosts}`);
+check("messy notes are answered from the saved notes", /water|membrane|clear date|bullet notes|study model/i.test(messy), messy.slice(0, 240));
 
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -71,9 +72,9 @@ const png = Buffer.from(
 );
 await writeFile(`${outDir}/notes.png`, png);
 const beforePhoto = studyPosts;
-await page.locator("#course-notes").fill("");
+await page.getByLabel("Study note").fill("");
 await page.locator("#study input[type='file']").setInputFiles(`${outDir}/notes.png`);
-await page.locator("#summarise").click();
+await page.locator("#study").getByRole("button", { name: "Send" }).click();
 await page.getByText(/readable text/i).waitFor({ timeout: 60000 });
 check("blank photo is not uploaded", studyPosts === beforePhoto, `posts=${studyPosts}`);
 check("blank photo says no readable text", (await page.locator("#study").innerText()).includes("readable text"));
@@ -94,8 +95,7 @@ const phoneErrors = [];
 phone.on("pageerror", (error) => phoneErrors.push(String(error)));
 await phone.goto(base, { waitUntil: "networkidle" });
 await phone.locator("#tab-study").click();
-await phone.getByRole("button", { name: "Use a sample" }).click();
-await phone.locator("#summarise").click();
+await phone.getByRole("button", { name: "Read the cell notes" }).click();
 await phone.waitForSelector("[data-study-title]");
 const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 check("mobile study has no horizontal overflow", overflow <= 1, `overflow=${overflow}`);

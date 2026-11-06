@@ -48,11 +48,10 @@ export function shouldNotify(event: Pick<CalEvent, "date" | "time" | "reminder" 
   return now.getTime() >= at.getTime() && now.getTime() < end.getTime();
 }
 
-export function notificationBody(event: Pick<CalEvent, "title" | "date" | "time" | "kind">, todayIso: string): string {
+export function notificationBody(event: Pick<CalEvent, "title" | "date" | "time">, todayIso: string): string {
   const when = event.date === todayIso ? "Today" : event.date === addDays(todayIso, 1) ? "Tomorrow" : formatShort(event.date);
   const time = event.time ? ` at ${formatTime(event.time)}` : "";
-  const kind = event.kind === "test" ? "Test" : "Homework";
-  return `${when}${time}: ${event.title} (${kind})`;
+  return `${when}${time}: ${event.title}`;
 }
 
 export function compareEvents(a: Pick<CalEvent, "date" | "time" | "title">, b: Pick<CalEvent, "date" | "time" | "title">): number {

@@ -1,27 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ProposalCard } from "@/components/ChatPanel";
 import { FILE_ACCEPT } from "@/lib/document-files";
 import { SAMPLE_NOTES } from "@/lib/study-notes";
-import type { StudySet } from "@/lib/types";
+import type { ChatMessage, Proposal, StudySet } from "@/lib/types";
+
+const SUGGESTIONS = [
+  { label: "Read the cell notes", text: SAMPLE_NOTES },
+  { label: "Why no oxygen?", text: "Why doesn't glycolysis need oxygen?" },
+  { label: "What is photosynthesis?", text: "What is photosynthesis?" },
+];
 
 export default function StudyPanel({
+  messages,
   studies,
   activeId,
-  note,
-  busy,
   modelLine,
-  onSummarise,
+  onSend,
+  onUpdateProposal,
+  onAdd,
+  onDiscard,
   onSelect,
   onRemove,
   onKnown,
 }: {
+  messages: ChatMessage[];
   studies: StudySet[];
   activeId: string | null;
-  note: string | null;
-  busy: boolean;
   modelLine: string;
-  onSummarise: (text: string, file: File | null) => Promise<boolean>;
+  onSend: (text: string, file: File | null) => Promise<void>;
+  onUpdateProposal: (messageId: string, proposalId: string, patch: Partial<Proposal>) => void;
+  onAdd: (messageId: string, proposalId: string) => void;
+  onDiscard: (messageId: string, proposalId: string) => void;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onKnown: (setId: string, cardId: string) => void;
@@ -29,11 +40,22 @@ export default function StudyPanel({
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const active = studies.find((set) => set.id === activeId) ?? null;
-  const [cardIndex, setCardIndex] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [flipped, setFlipped] = useState(false);
+  const [cardIndex, setCardIndex] = useState(0);
   const [openQuestion, setOpenQuestion] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  const active = studies.find((set) => set.id === activeId) ?? null;
+  const card = active?.flashcards[cardIndex] ?? null;
+
+  useEffect(() => {
+    setFlipped(false);
+    setCardIndex(0);
+    setOpenQuestion(null);
+    setConfirmRemove(false);
+  }, [activeId]);
 
   useEffect(() => {
     if (!file) {
@@ -46,71 +68,34 @@ export default function StudyPanel({
   }, [file]);
 
   useEffect(() => {
-    setCardIndex(0);
-    setFlipped(false);
-    setOpenQuestion(null);
-    setConfirmRemove(false);
-  }, [activeId]);
+    const node = logRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [messages]);
 
-  const card = active?.flashcards[cardIndex] ?? null;
-
-  async function submit() {
-    if (busy || (!text.trim() && !file)) return;
-    const saved = await onSummarise(text, file);
-    if (!saved) return;
-    setText("");
-    setFile(null);
+  async function submit(nextText: string, nextFile: File | null) {
+    if (busy) return;
+    if (!nextText.trim() && !nextFile) return;
+    setBusy(true);
+    try {
+      await onSend(nextText, nextFile);
+      setText("");
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <div className="study-layout" id="study">
-      <section className="card study-compose" aria-label="Summarise course material">
-        <h2 className="section-label">Course material</h2>
-        <p className="model-status" role="status">{modelLine}</p>
-        <p className="quiet">Paste notes with headings or bullets, or attach a photo or PDF. The file is read in this browser and is not uploaded.</p>
-        <label className="field">
-          Course notes
-          <textarea
-            id="course-notes"
-            rows={8}
-            value={text}
-            placeholder="A heading, then bullet points, or lines like Osmosis: water moves..."
-            onChange={(change) => setText(change.target.value)}
-          />
-        </label>
-        {file ? (
-          <div className="preview">
-            {preview && file.type.startsWith("image/") ? <img src={preview} alt="" /> : null}
-            <span>{file.name}</span>
-            <button type="button" className="ghost" onClick={() => setFile(null)}>
-              Remove file
-            </button>
-          </div>
-        ) : null}
-        <div className="row-actions">
-          <button type="button" className="ghost" onClick={() => setText(SAMPLE_NOTES)}>
-            Use a sample
-          </button>
-          <label className="icon-btn file-label">
-            Add photo or PDF
-            <input
-              type="file"
-              accept={FILE_ACCEPT}
-              hidden
-              onChange={(change) => setFile(change.target.files?.[0] ?? null)}
-            />
-          </label>
-          <button id="summarise" type="button" className="primary" disabled={busy || (!text.trim() && !file)} onClick={() => void submit()}>
-            {busy ? (file ? "Reading…" : "Summarising…") : "Summarise"}
-          </button>
-        </div>
-        {note ? <p className="save-warning" role="status">{note}</p> : null}
-        <p className="fine-print">
-          Photos, PDFs, and notes stay in this browser. They are not uploaded.
+    <div className="study-layout">
+      <section className="card study-chat" id="study" aria-label="Study desk">
+        <h2 className="section-label">Study</h2>
+        <p className="model-status" role="status" data-model-line="true">
+          {modelLine}
         </p>
         {studies.length > 0 ? (
-          <div className="set-list">
-            <h3 className="section-label">Saved in this browser</h3>
+          <div className="set-list" aria-label="Saved study sets">
             {studies.map((set) => (
               <button
                 key={set.id}
@@ -126,10 +111,105 @@ export default function StudyPanel({
             ))}
           </div>
         ) : null}
+        <div className="messages" ref={logRef}>
+          {messages.length === 0 ? (
+            <p className="empty-chat">
+              Paste a passage, attach a photo or PDF, or start from a suggestion. A follow-up stays on the notes you already gave.
+            </p>
+          ) : (
+            messages.map((message) =>
+              message.role === "user" ? (
+                <div key={message.id} className="msg-user" data-role="user">
+                  <p>{message.text || "Photo"}</p>
+                  {message.imageName ? <span className="photo-name">File: {message.imageName}</span> : null}
+                </div>
+              ) : (
+                <div key={message.id} className="msg-assistant" data-role="assistant" data-kind={message.kind ?? ""}>
+                  {message.kind ? <p className="desk-kind">{kindLabel(message.kind)}</p> : null}
+                  <p>{message.text}</p>
+                  {message.proposals?.map((proposal) => (
+                    <ProposalCard
+                      key={proposal.id}
+                      proposal={proposal}
+                      onChange={(patch) => onUpdateProposal(message.id, proposal.id, patch)}
+                      onAdd={() => onAdd(message.id, proposal.id)}
+                      onDiscard={() => onDiscard(message.id, proposal.id)}
+                    />
+                  ))}
+                </div>
+              ),
+            )
+          )}
+        </div>
+        <div className="chips" aria-label="Suggestions">
+          {SUGGESTIONS.map((suggestion) => (
+            <button key={suggestion.label} type="button" className="chip" onClick={() => void submit(suggestion.text, null)}>
+              {suggestion.label}
+            </button>
+          ))}
+        </div>
+        <form
+          className="composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit(text, file);
+          }}
+        >
+          <label className="field">
+            Message
+            <textarea
+              aria-label="Study note"
+              value={text}
+              rows={3}
+              placeholder="Ask about the notes, or paste a passage"
+              onChange={(change) => setText(change.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submit(text, file);
+                }
+              }}
+            />
+          </label>
+          {file ? (
+            <div className="preview">
+              {preview && file.type.startsWith("image/") ? <img src={preview} alt="" /> : null}
+              <span>{file.name}</span>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setFile(null);
+                  if (fileRef.current) fileRef.current.value = "";
+                }}
+              >
+                Remove file
+              </button>
+            </div>
+          ) : null}
+          <div className="composer-actions">
+            <button type="button" className="icon-btn" onClick={() => fileRef.current?.click()}>
+              Add photo or PDF
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept={FILE_ACCEPT}
+              hidden
+              onChange={(change) => setFile(change.target.files?.[0] ?? null)}
+            />
+            <button type="submit" className="primary" disabled={busy || (!text.trim() && !file)}>
+              {busy ? "Reading…" : "Send"}
+            </button>
+          </div>
+        </form>
+        <p className="fine-print">
+          Notes stay in this browser. If a question is not in them, Due Light may ask Wikipedia, and only that question is sent.
+        </p>
       </section>
       <section className="card study-result" aria-label="Study set">
         {!active ? (
-          <p className="quiet">A summary will land here: important points, flashcards, and exam-style questions.</p>
+          <p className="quiet">A summary will land here: important points, flashcards, and practice questions.</p>
         ) : (
           <>
             <div className="event-head">
@@ -155,12 +235,7 @@ export default function StudyPanel({
             <h3 className="section-label">Flashcards</h3>
             {card ? (
               <div className="cards">
-                <button
-                  type="button"
-                  className="flip"
-                  data-side={flipped ? "back" : "front"}
-                  onClick={() => setFlipped((value) => !value)}
-                >
+                <button type="button" className="flip" data-side={flipped ? "back" : "front"} onClick={() => setFlipped((value) => !value)}>
                   <span className="meta">{flipped ? "Answer" : "Cue"} · click to flip</span>
                   <strong>{flipped ? card.back : card.front}</strong>
                 </button>
@@ -198,7 +273,7 @@ export default function StudyPanel({
             <p className="quiet">Each question uses the terms from these notes.</p>
             {active.questions.map((question) => (
               <article key={question.id} className="question" data-question="true">
-                <p className="kind kind-test">Apply</p>
+                <p className="meta">Practice</p>
                 <p className="question-prompt">{question.prompt}</p>
                 {openQuestion === question.id ? (
                   <div className="approach">
@@ -217,4 +292,11 @@ export default function StudyPanel({
       </section>
     </div>
   );
+}
+
+function kindLabel(kind: NonNullable<ChatMessage["kind"]>): string {
+  if (kind === "deadline") return "Deadline";
+  if (kind === "notes") return "Course notes";
+  if (kind === "followup") return "Follow-up";
+  return "Question";
 }

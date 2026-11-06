@@ -274,8 +274,7 @@ button { cursor: pointer; }
 
 .marks { display: flex; gap: 3px; height: 6px; }
 .mark { width: 6px; height: 6px; border-radius: 99px; }
-.mark-homework { background: var(--green); }
-.mark-test { background: #b5522a; }
+.mark-due { background: var(--ink); }
 
 .legend {
   display: flex;
@@ -474,15 +473,36 @@ textarea { resize: vertical; min-height: 64px; }
   margin-top: 14px;
 }
 
-.study-compose,
+.study-chat,
 .study-result {
   padding: 16px;
 }
 
-.study-compose {
+.study-chat {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.study-chat .messages {
+  flex: none;
+  overflow: visible;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chip {
+  border-radius: 999px;
+  border: 1px dashed var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 7px 12px;
+  font-size: 0.92rem;
 }
 
 .point-list {

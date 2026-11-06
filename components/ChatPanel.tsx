@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FILE_ACCEPT } from "@/lib/document-files";
 import { REMINDER_OPTIONS } from "@/lib/reminders";
 import { isIsoDate } from "@/lib/shanghai";
-import type { ChatMessage, Kind, Proposal, ReminderChoice } from "@/lib/types";
+import type { ChatMessage, Proposal, ReminderChoice } from "@/lib/types";
 
 const EXAMPLES = ["Math homework due Nov 14", "Biology quiz Friday 10:00", "Essay due tomorrow"];
 
@@ -185,7 +185,7 @@ function kindLabel(kind: NonNullable<ChatMessage["kind"]>): string {
   return "Question";
 }
 
-function ProposalCard({
+export function ProposalCard({
   proposal,
   onChange,
   onAdd,
@@ -208,7 +208,6 @@ function ProposalCard({
   const ready = proposal.title.trim().length > 0 && isIsoDate(proposal.date);
   return (
     <div className="proposal" data-status="pending">
-      <p className={`kind kind-${proposal.kind}`}>{proposal.kind === "test" ? "Test" : "Homework"}</p>
       {proposal.sourceText ? <p className="source">Read as: {proposal.sourceText}</p> : null}
       <div className="fields">
         <label className="field wide">
@@ -227,22 +226,6 @@ function ProposalCard({
             onChange={(change) => onChange({ time: change.target.value || null })}
           />
         </label>
-        <div className="field wide">
-          <span>Kind</span>
-          <div className="segment">
-            {(["homework", "test"] as Kind[]).map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                data-kind={kind}
-                aria-pressed={proposal.kind === kind}
-                onClick={() => onChange({ kind })}
-              >
-                {kind === "test" ? "Test" : "Homework"}
-              </button>
-            ))}
-          </div>
-        </div>
         <label className="field wide">
           Reminder
           <select
